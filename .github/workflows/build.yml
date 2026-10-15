@@ -1,0 +1,28 @@
+# File: .github/workflows/build.yml
+name: Build iOS Chams Dylib
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Compile Chams.dylib for iOS ARM64
+      run: |
+        xcrun -sdk iphoneos clang++ -arch arm64 -dynamiclib \
+          -framework Foundation -framework UIKit -framework Metal \
+          -fobjc-arc -O2 \
+          Chams.mm -o Chams.dylib
+
+    - name: Upload Compiled Dylib
+      uses: actions/upload-artifact@v4
+      with:
+        name: Chams-Dylib
+        path: Chams.dylib
