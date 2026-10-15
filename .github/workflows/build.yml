@@ -1,4 +1,3 @@
-# File: .github/workflows/build.yml
 name: Build iOS Chams Dylib
 
 on:
@@ -8,96 +7,85 @@ on:
 jobs:
   build:
     runs-on: macos-latest
-
     steps:
-    - name: Generate and Compile Chams.dylib
-      run: |
-        cat << 'EOF' > Chams.mm
-        #import <Foundation/Foundation.h>
-        #import <Metal/Metal.h>
-        #import <UIKit/UIKit.h>
-        #import <objc/runtime.h>
+      - name: Decode and Compile Chams.dylib
+        run: |
+          echo "I2ltcG9ydCA8Rm91bmRhdGlvbi9Gb3VuZGF0aW9uLmg+CiNpbXBvcnQgPE1ldGFsL01ldGFsLmg+CiNpbXBvcnQgPFVJS2l0L1VJS2l0Lmg+CiNpbXBvcnQgPG9iamMvcnVudGltZS5oPgoKc3RhdGljIGlkPE1UTERlcHRoU3RlbmNpbFN0YXRlPiBnX1dhbGxoYWNrRGVwdGhTdGF0ZSA9IG5pbDsKc3RhdGljIHZvaWQgKCpvcmlnX3NldERlcHRoU3RlbmNpbFN0YXRlKShpZCwgU0VMLCBpZDxNVExEZXB0aFN0ZW5jaWxTdGF0ZT4pID0gTlVMTDsKc3RhdGljIHZvaWQgKCpvcmlnX2RyYXdJbmRleGVkUHJpbWl0aXZlcykoaWQsIFNFTCwgTVRMUHJpbWl0aXZlVHlwZSwgTlNVSW50ZWdlciwgTVRMSW5kZXhUeXBlLCBpZDxNVExCdWZmZXI+LCBOU1VJbnRlZ2VyKSA9IE5VTEw7CnN0YXRpYyBfX3RocmVhZCBpZDxNVExEZXB0aFN0ZW5jaWxTdGF0ZT4gY3VycmVudEdhbWVEZXB0aFN0YXRlID0gbmlsOwoKdm9pZCBob29rZWRfc2V0RGVwdGhTdGVuY2lsU3RhdGUoaWQgc2VsZiwgU0VMIF9jbWQsIGlkPE1UTERlcHRoU3RlbmNpbFN0YXRlPiBzdGF0ZSkgewogICAgY3VycmVudEdhbWVEZXB0aFN0YXRlID0gc3RhdGU7CiAgICBpZiAob3JpZ19zZXREZWB0aFN0ZW5jaWxTdGF0ZSkgewogICAgICAgIG9yaWdfc2V0RGVwdGhTdGVuY2lsU3RhdGUoc2VsZiwgX2NtZCwic3RhdGUpOwogICAgfQp9Cg==" > dummy.b64
+          cat << 'EOF' > Chams.m
+          #import <Foundation/Foundation.h>
+          #import <Metal/Metal.h>
+          #import <objc/runtime.h>
 
-        static id<MTLDepthStencilState> g_WallhackDepthState = nil;
-        static void (*orig_setDepthStencilState)(id, SEL, id<MTLDepthStencilState>) = NULL;
-        static void (*orig_drawIndexedPrimitives)(id, SEL, MTLPrimitiveType, NSUInteger, MTLIndexType, id<MTLBuffer>, NSUInteger) = NULL;
-        static __thread id<MTLDepthStencilState> currentGameDepthState = nil;
+          static id<MTLDepthStencilState> g_WallhackDepthState = nil;
+          static IMP orig_setDepthStencilState = NULL;
+          static IMP orig_drawIndexedPrimitives = NULL;
+          static __thread id currentGameDepthState = nil;
 
-        void hooked_setDepthStencilState(id self, SEL _cmd, id<MTLDepthStencilState> state) {
-            currentGameDepthState = state;
-            if (orig_setDepthStencilState) {
-                orig_setDepthStencilState(self, _cmd, state);
-            }
-        }
+          void hooked_setDepthStencilState(id self, SEL _cmd, id state) {
+              currentGameDepthState = state;
+              if (orig_setDepthStencilState) {
+                  ((void (*)(id, SEL, id))orig_setDepthStencilState)(self, _cmd, state);
+              }
+          }
 
-        void hooked_drawIndexedPrimitives(id self, SEL _cmd, MTLPrimitiveType primitiveType, NSUInteger indexCount, MTLIndexType indexType, id<MTLBuffer> indexBuffer, NSUInteger indexBufferOffset) {
-            if (primitiveType == MTLPrimitiveTypeTriangle && indexCount > 1200 && indexCount < 16000) {
-                if (g_WallhackDepthState == nil) {
-                    id<MTLDevice> device = [self performSelector:@selector(device)];
-                    if (device) {
-                        MTLDepthStencilDescriptor *desc = [[MTLDepthStencilDescriptor alloc] init];
-                        desc.depthCompareFunction = MTLCompareFunctionAlways;
-                        desc.depthWriteEnabled = NO;
-                        g_WallhackDepthState = [device newDepthStencilStateWithDescriptor:desc];
-                    }
-                }
-                if (g_WallhackDepthState != nil && orig_setDepthStencilState != NULL) {
-                    orig_setDepthStencilState(self, @selector(setDepthStencilState:), g_WallhackDepthState);
-                    orig_drawIndexedPrimitives(self, _cmd, primitiveType, indexCount, indexType, indexBuffer, indexBufferOffset);
-                    if (currentGameDepthState != nil) {
-                        orig_setDepthStencilState(self, @selector(setDepthStencilState:), currentGameDepthState);
-                    }
-                    return;
-                }
-            }
-            if (orig_drawIndexedPrimitives) {
-                orig_drawIndexedPrimitives(self, _cmd, primitiveType, indexCount, indexType, indexBuffer, indexBufferOffset);
-            }
-        }
+          void hooked_drawIndexedPrimitives(id self, SEL _cmd, MTLPrimitiveType primitiveType, NSUInteger indexCount, MTLIndexType indexType, id indexBuffer, NSUInteger indexBufferOffset) {
+              if (primitiveType == MTLPrimitiveTypeTriangle && indexCount > 1200 && indexCount < 16000) {
+                  if (g_WallhackDepthState == nil) {
+                      id<MTLDevice> device = [self performSelector:@selector(device)];
+                      if (device) {
+                          MTLDepthStencilDescriptor *desc = [[MTLDepthStencilDescriptor alloc] init];
+                          desc.depthCompareFunction = MTLCompareFunctionAlways;
+                          desc.depthWriteEnabled = NO;
+                          g_WallhackDepthState = [device newDepthStencilStateWithDescriptor:desc];
+                      }
+                  }
+                  if (g_WallhackDepthState != nil && orig_setDepthStencilState != NULL) {
+                      ((void (*)(id, SEL, id))orig_setDepthStencilState)(self, @selector(setDepthStencilState:), g_WallhackDepthState);
+                      ((void (*)(id, SEL, MTLPrimitiveType, NSUInteger, MTLIndexType, id, NSUInteger))orig_drawIndexedPrimitives)(self, _cmd, primitiveType, indexCount, indexType, indexBuffer, indexBufferOffset);
+                      if (currentGameDepthState != nil) {
+                          ((void (*)(id, SEL, id))orig_setDepthStencilState)(self, @selector(setDepthStencilState:), currentGameDepthState);
+                      }
+                      return;
+                  }
+              }
+              if (orig_drawIndexedPrimitives) {
+                  ((void (*)(id, SEL, MTLPrimitiveType, NSUInteger, MTLIndexType, id, NSUInteger))orig_drawIndexedPrimitives)(self, _cmd, primitiveType, indexCount, indexType, indexBuffer, indexBufferOffset);
+              }
+          }
 
-        void swizzleMetalRenderEncoder() {
-            id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-            if (!device) return;
-            id<MTLCommandQueue> queue = [device newCommandQueue];
-            id<MTLCommandBuffer> buffer = [queue commandBuffer];
-            MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
-            MTLTextureDescriptor *texDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm width:16 height:16 mipmapped:NO];
-            texDesc.usage = MTLTextureUsageRenderTarget;
-            id<MTLTexture> dummyTex = [device newTextureWithDescriptor:texDesc];
-            pass.colorAttachments[0].texture = dummyTex;
-            id<MTLRenderCommandEncoder> encoder = [buffer renderCommandEncoderWithDescriptor:pass];
-            Class encoderClass = [encoder class];
-            [encoder endEncoding];
+          __attribute__((constructor))
+          static void initializeChams(void) {
+              dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+                  if (!device) return;
+                  id<MTLCommandQueue> queue = [device newCommandQueue];
+                  id<MTLCommandBuffer> buffer = [queue commandBuffer];
+                  MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
+                  MTLTextureDescriptor *texDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm width:16 height:16 mipmapped:NO];
+                  texDesc.usage = MTLTextureUsageRenderTarget;
+                  id<MTLTexture> dummyTex = [device newTextureWithDescriptor:texDesc];
+                  pass.colorAttachments[0].texture = dummyTex;
+                  id<MTLRenderCommandEncoder> encoder = [buffer renderCommandEncoderWithDescriptor:pass];
+                  Class encoderClass = [encoder class];
+                  [encoder endEncoding];
 
-            Method depthMethod = class_getInstanceMethod(encoderClass, @selector(setDepthStencilState:));
-            if (depthMethod) {
-                orig_setDepthStencilState = (void *)method_getImplementation(depthMethod);
-                method_setImplementation(depthMethod, (IMP)hooked_setDepthStencilState);
-            }
+                  Method depthMethod = class_getInstanceMethod(encoderClass, @selector(setDepthStencilState:));
+                  if (depthMethod) {
+                      orig_setDepthStencilState = method_setImplementation(depthMethod, (IMP)hooked_setDepthStencilState);
+                  }
+                  SEL drawSel = @selector(drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:);
+                  Method drawMethod = class_getInstanceMethod(encoderClass, drawSel);
+                  if (drawMethod) {
+                      orig_drawIndexedPrimitives = method_setImplementation(drawMethod, (IMP)hooked_drawIndexedPrimitives);
+                  }
+              });
+          }
+          EOF
+          sed 's/^[[:space:]]*//' Chams.m > Chams_clean.m
+          xcrun -sdk iphoneos clang -arch arm64 -dynamiclib -framework Foundation -framework Metal -O2 Chams_clean.m -o Chams.dylib
 
-            SEL drawSel = @selector(drawIndexedPrimitives:indexCount:indexType:indexBuffer:indexBufferOffset:);
-            Method drawMethod = class_getInstanceMethod(encoderClass, drawSel);
-            if (drawMethod) {
-                orig_drawIndexedPrimitives = (void *)method_getImplementation(drawMethod);
-                method_setImplementation(drawMethod, (IMP)hooked_drawIndexedPrimitives);
-            }
-        }
-
-        __attribute__((constructor))
-        static void initializeChams() {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(4.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                swizzleMetalRenderEncoder();
-            });
-        }
-        EOF
-
-        xcrun -sdk iphoneos clang++ -arch arm64 -dynamiclib \
-          -framework Foundation -framework UIKit -framework Metal \
-          -fobjc-arc -O2 -Wno-deprecated-declarations \
-          Chams.mm -o Chams.dylib
-
-    - name: Upload Compiled Dylib
-      uses: actions/upload-artifact@v4
-      with:
-        name: Chams-Dylib
-        path: Chams.dylib
+      - name: Upload Compiled Dylib
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chams-Dylib
+          path: Chams.dylib
